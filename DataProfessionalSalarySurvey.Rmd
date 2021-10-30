@@ -1,0 +1,250 @@
+---
+title: "Data Professional Salary Survey"
+author: "Jason Tompkins"
+date: "1/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages, include=FALSE}
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("maps")
+library(maps)
+#install.packages("mapproj")
+library(mapproj)
+#install.packages("ggmap")
+library(ggmap)
+#install.packages("ggplot2")
+library(ggplot2)
+#install.packages("caret")
+library(caret)
+#install.packages("kernlab")
+library(kernlab)
+#install.packages("e1071")
+library(e1071)
+#install.packages("arulesViz")
+library(arulesViz)
+#install.packages("arules")
+library(arules)
+#install.packages("reshape2")
+library(reshape2)
+```
+
+
+The data are the result of three surveys completed in 2017, 2018, and 2019. The original source of the data was brentozar.com . Brent Ozar is a Database Administrator and online content creator. The data set contains 6893 observations of 29 variable. One thing to note about survey data is that the responses carry the biases of the respondents. Rather than approaching this data as information that was gathered by a uniform process, it is more precise to approach it as the information that respondents want to convey. In this context it is possible that respondents reported their salaries as slightly higher or responded humorously to a question that they found unimportant. For example one survey taker reported their gender as an "Apache helicopter". This doesn't invalidate the fact that the majority of respondents identified as male. 
+
+The analysis below seeks to answer the question "Can this data be used to gain insight into attributes that result in a higher than average salary for Data Professionals".
+
+## Exploratory Data Analysis
+
+Descriptive statistics were calculated (shown below). It became obvious early on that some extreme outliers were making it difficult to analyze the data, and in some cases impossible to visualize. The salaries above $500,000 and below $1000 were removed to better facilitate analysis. The outliers were inspected, but the attributes were consistent with observations with salaries closer to the average. It's likely that the qualities of these individuals that demand such a high salary were not captured by the survey. 
+
+* Before removing outliers
+	+ The average salary is $92,458.66
+	+ The std dev of salaries is $55,765.26
+	+ The median salary is $90,000.00
+	+ The maximum salary is $1,450,000
+	+ The minimum is 0
+	+ The middle 50% of salaries fall between $65,000 to $115,000
+* After removing outliers
+	+ The average salary is $91,151.88
+	+ The std dev of salaries is $41,425.04 
+	+ The median salary is $90,000.00
+	+ The maximum salary is $500,000
+	+ The minimum is $1050 
+	+ The middle 50% of salaries fall between $65,000 to $115,000                  
+
+A few visualizations were generated to better understand the data. The majority of respondents were full time employees, had a bachelor’s degree, and work in the private sector. Next, a histogram was created to visualize the distribution of salaries. The distribution is skewed towards the average salary of $91,151.88 with a long tail toward the maximum salary of $500,000. 
+
+A box plot was produced to create a comparison between the salaries of data professionals that worked with different database platforms. The majority respondents work with Microsoft SQL Server, but the respondents who work with databases like MongoDB and Elasticsearch seem to have higher average salaries. 
+
+Finally, a scatter plot shows the positive relationship between salary and the years of experience respondents had in their current job. 
+
+
+## Linear Regression Model
+
+After the exploratory data analysis, a linear model was created to predict salary based on certain attributes. The attributes chosen as independent variables were; manages staff, country, primary database, years with this type of job, employment status, job title, other people on your team, database servers, education, education is computer related, certifications, and employment sector. The model accounts for 52.2% of the effects on salary, according to the adjusted R-squared value. The formula that was generated is below. 
+
+Predicted Salary  = -23,224.07 + Country + Employment Status + Job Title + Education + Certification + Sector + (Number of years working that type of job * 1007.5)
+
+In an effort to interpret the linear model a scenario was created. This scenario used some attributes that were less frequent in order to find a higher-than-average salary. The specific attributes are listed below.
+
+* Attributes
+	+ Country = US
+	+ Employment Status = Ind Contractor or Company Owner
+	+ Job Title = Data Scientist
+	+ Education = Master Degree
+	+ Certification = Yes but expired
+	+ Sector = Federal Gov't  
+	+ Number of years experience = 3
+
+The resulting predicted salary was $193,905.
+
+## EDA Code
+```{r load the data, include=FALSE}
+rawDataSalary <- data.frame(read_csv("C:/Users/jtomp/OneDrive/Documents/aa_IST 687 Intro to Data Science_RworkingDirectory/Project/2019_Data_Professional_Salary_Survey_Responses.csv"))
+```
+
+
+```{r}
+# Clean the datafile by removing any rows where the data is 'NA'
+trueFalse <- !is.na(rawDataSalary$SalaryUSD)
+cleanDataSalary1 <- rawDataSalary[trueFalse,]
+
+# Calculate descriptive statistics for SalaryUSD
+mean(cleanDataSalary1$SalaryUSD, na.rm =T) # The average salary is $92,458.66
+sd(cleanDataSalary1$SalaryUSD, na.rm =T) # The std dev of salaries is $55,765.26
+median(cleanDataSalary1$SalaryUSD, na.rm =T) # The median salary is $90,000.00
+max(cleanDataSalary1$SalaryUSD, na.rm =T) # The maximum salary is $1,450,000
+min(cleanDataSalary1$SalaryUSD, na.rm =T) # The minimum is 0 
+quantile(cleanDataSalary1$SalaryUSD, na.rm =T) # The middle 50% of salaries fall between $65,000 to $115,000
+```
+```{r}
+# Create subsets to remove additional errors and extreme outliers
+cleanDataSalary2 <- subset(cleanDataSalary1, SalaryUSD < 500001) #removes salaries over $500,001
+cleanDataSalary3 <- subset(cleanDataSalary2, SalaryUSD > 1000) #removes salaries under $1000
+cleanDataSalary <- subset(cleanDataSalary3, YearsWithThisDatabase < 51) #removes erroneous years with current database
+
+# Inspect the outliers and items removed from the primary subset
+highSalaryOutliers <- subset(rawDataSalary, SalaryUSD >500001)
+lowSalaryOutliers <- subset(rawDataSalary, SalaryUSD < 999)
+elderDatabaseAdmins <- subset(rawDataSalary, YearsWithThisDatabase > 50)
+
+# Convert discrete variables to factors
+cleanDataSalary$Country = as.factor(cleanDataSalary$Country)
+cleanDataSalary$PrimaryDatabase = as.factor(cleanDataSalary$PrimaryDatabase)
+cleanDataSalary$EmploymentStatus = as.factor(cleanDataSalary$EmploymentStatus)
+cleanDataSalary$JobTitle = as.factor(cleanDataSalary$JobTitle)
+cleanDataSalary$ManageStaff = as.factor(cleanDataSalary$ManageStaff)
+cleanDataSalary$OtherPeopleOnYourTeam = as.factor(cleanDataSalary$OtherPeopleOnYourTeam)
+cleanDataSalary$Education = as.factor(cleanDataSalary$Education)
+cleanDataSalary$EducationIsComputerRelated = as.factor(cleanDataSalary$EducationIsComputerRelated)
+cleanDataSalary$Certifications = as.factor(cleanDataSalary$Certifications)
+cleanDataSalary$TelecommuteDaysPerWeek = as.factor(cleanDataSalary$TelecommuteDaysPerWeek)
+cleanDataSalary$EmploymentSector = as.factor(cleanDataSalary$EmploymentSector)
+cleanDataSalary$LookingForAnotherJob = as.factor(cleanDataSalary$LookingForAnotherJob)
+
+# Remove columns that don't consistently contain values over the three years of the survey (i.e. "Not Asked")
+cleanDataSalary$PostalCode <- NULL
+cleanDataSalary$HowManyCompanies <- NULL
+cleanDataSalary$CompanyEmployeesOverall <- NULL
+cleanDataSalary$PopulationOfLargestCityWithin20Miles <- NULL
+cleanDataSalary$CareerPlansThisYear <- NULL
+cleanDataSalary$OtherJobDuties <- NULL
+cleanDataSalary$KindsOfTasksPerformed <- NULL
+cleanDataSalary$Gender <- NULL
+cleanDataSalary$Counter <- NULL
+
+# Summarize the variables in dataProfessionalSalary using summery()
+summary(cleanDataSalary)
+```
+```{r High Salary Outliers}
+highSalaryOutliers
+```
+```{r}
+# Barcharts of discrete data to visualize the segments
+
+# Employee Status
+ggplot(cleanDataSalary, aes(x = factor(EmploymentStatus))) +
+  geom_bar(fill = "steelblue", alpha = 1) +
+  theme_classic() +
+  theme(axis.text.x= element_text(angle = 20, hjust= 1)) +
+  ggtitle("Employment Status")
+
+# Education
+ggplot(cleanDataSalary, aes(x = factor(Education))) +
+  geom_bar(fill = "steelblue", alpha = 1) +
+  theme_classic() +
+  theme(axis.text.x= element_text(angle = 90, hjust= 1)) +
+  ggtitle("Education")
+
+# Employment Sector
+ggplot(cleanDataSalary, aes(x = factor(EmploymentSector))) +
+  geom_bar(fill = "steelblue", alpha = 1) +
+  theme_classic() +
+  theme(axis.text.x= element_text(angle = 90, hjust= 1)) +
+  ggtitle("Employment Sector")
+```
+
+```{r}
+# Calculate new descriptive statistics for SalaryUSD to contrast with the original dataset
+mean(cleanDataSalary$SalaryUSD, na.rm =T) # The average salary is $91,151.88 lower avg
+sd(cleanDataSalary$SalaryUSD, na.rm =T) # The std dev of salaries is $41,425.04 lower std dev
+median(cleanDataSalary$SalaryUSD, na.rm =T) # The median salary is $90,000.00 No change
+max(cleanDataSalary$SalaryUSD, na.rm =T) # The maximum salary is $500,000
+min(cleanDataSalary$SalaryUSD, na.rm =T) # The minimum is $1050 
+quantile(cleanDataSalary$SalaryUSD, na.rm =T) # The middle 50% of salaries fall between $65,000 to $115,000 No change
+
+# Create a histogram of $SalaryUSD
+hist(cleanDataSalary$SalaryUSD) 
+```
+```{r}
+# Create boxplots for SalaryUSD grouped by Primary Database
+cleanDataSalary %>%
+  ggplot() +
+  aes(x=PrimaryDatabase, y=SalaryUSD)+
+  geom_boxplot()+
+  theme(axis.text.x= element_text(angle = 90, hjust= 1)) +
+  ggtitle("Salaries by Primary Database") +
+  xlab("Primary Database") + ylab("Salary in USD")
+```
+```{r}
+# Scatter Plot of SalaryUSD by YearsWithThisTypeOfJob
+salaryScatter1 <- cleanDataSalary %>%
+  ggplot() +
+  aes(x=YearsWithThisTypeOfJob, y=SalaryUSD)+
+  geom_point(aes())
+
+# Create a best fit line for salaryScatter
+salaryScatter1 + geom_smooth(method="lm", se=FALSE)
+```
+
+
+## Linear Regression Code
+
+```{r}
+# Create a Linear Model to predict Salary
+lmOut <- lm(SalaryUSD ~ ManageStaff + 
+              Country + 
+              PrimaryDatabase + 
+              YearsWithThisTypeOfJob + 
+              EmploymentStatus + 
+              JobTitle + 
+              OtherPeopleOnYourTeam + 
+              DatabaseServers + 
+              Education +
+              EducationIsComputerRelated + 
+              Certifications + 
+              EmploymentSector, 
+            data = cleanDataSalary
+)
+summary(lmOut)
+```
+```{r}
+# Data Interpretation
+# This model accounts for 52.2% of the effects on salary
+# Using this model we can predict a salary based on the following statistically significant attributes
+lmIntercept <- -23224.07
+lmCountry <- 89463.73 #US
+lmYearsExp <- 1007.5*3 #Number of years working that type of job
+lmEmpStatus <- 57672.43 #Ind Contractor or Company Owner
+lmJobTitle <- 26035.85 #Data Scientist
+lmEducation <- 9129.92 #Masters
+lmCertification <- 7463.64 #Yes but expired
+lmSector <- 24341 #Federal Gov't
+
+lmSalaryPrediction <- lmIntercept + lmCountry + lmYearsExp + lmEmpStatus + lmJobTitle + lmEducation + lmCertification + lmSector
+lmSalaryPrediction # $193,905
+```
+
+
+
+```{r}
+dev.off() # Clear the graph window
+rm(list=ls()) # Clear user objects from the environment
+cat('\014')  # Clear the console
+```
