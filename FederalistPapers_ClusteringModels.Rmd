@@ -1,0 +1,179 @@
+---
+title: "Homework 4: Clustering"
+author: "Jason Tompkins"
+date: "5/1/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-all-libraries, include=FALSE}
+#install.packages("ggplot2")
+library(ggplot2)
+
+#install.packages("cluster")
+library(cluster)
+
+#install.packages("factoextra")
+library(factoextra)
+
+#install.packages("dendextend")
+library(dendextend)
+
+#install.packages("dplyr")
+library(dplyr)
+
+#install.packages("proxy")
+library(proxy)
+```
+
+## Introduction
+
+The Library of Congress is the largest library in the world, and is tasked with preserving historic and culturally important books, documents, and media. As a source for knowledge and research it is vital to the Library of Congress that they have all the information available pertaining to the documents housed within its archives. 
+
+There are eleven documents among the Federalist Papers whose authorship is in dispute. Anyone who had first-hand knowledge of who wrote each of the eleven disputed Federalist Papers has passed away as they were written in 1787 and 1788. The texts themselves are the only evidence for there own authorship. For many years experts could only speculate on who wrote them based on writing style and drawing basic comparisons.The use of clustering data mining methods will be used to measure the similarities in work usage between the disputed papers and the ones with identified authors. 
+
+According to the Library of Congress, The Federalist Papers were a series of eighty-five essays urging the citizens of New York to ratify the new United States Constitution. Written by Alexander Hamilton, James Madison, and John Jay, the essays originally appeared anonymously in New York newspapers in 1787 and 1788 under the pen name "Publius." The Federalist Papers are considered one of the most important sources for interpreting and understanding the original intent of the Constitution.
+
+
+
+## Loading and Preparing the Data
+
+The data consists of 85 observations each representing a separate essay from the collection of essays known as the "Federalist Papers". There are 72 variables for each essay. The variables are summarized below. 
+
+Author: The author indicates the authorship of each paper. There are three acknowledged authors of the Federalist papers; Alexander Hamilton, John Jay, and James Madison. Three were written as a collaboration between Hamilton and Madison. The author of eleven of the essays are disputed. 
+
+Filename: The name of each text file that includes an indication of the authorship, the abbreviation "fed', and the sequential number of the essay (e.g. Hamilton_fed_1.txt, dispt_fed_50.txt)
+
+a, all, also... some: Columns three through seventy-two list words that appear in the essays. The text files are assigned a factor for each word that indicates how prevalent that word is in the text. 
+
+```{r}
+# Read in CSV
+fedPapersRAW <- read.csv("~/rData/fedPapers85_fromClass.csv", sep=",")
+
+# View the data
+#View(fedPapersRAW)
+
+# Check for missing values
+sum(is.na(fedPapersRAW))
+```
+## K-Means Clustering
+
+K-Means clustering is method that places each observation in a multidimensional space and assigns each observation into a distinct cluster based on it's relation to the other observations. 
+
+The number of clusters is not determined by the algorithm and therefore must be entered as an input to the model. After a series of trials with different numbers. A model with 12 clusters created enough visual stratification to make some conclusions about authorship.  
+
+
+```{r}
+# Create a subset that excludes the authors names
+fedPapers_KM <- fedPapersRAW[,2:72]
+
+# Reduce the dimensionality.. focus on signal and not noise
+#fedPapers_KM <- select(fedPapers_KM, filename, upon, all, may, also, even, from, shall, only)
+
+# Make the names of each file an index for the rownames
+rownames(fedPapers_KM) <- fedPapers_KM[,1]
+fedPapers_KM[,1] <- NULL
+
+#View(fedPapers_KM)
+
+# Determine "optimal" number of clusters
+
+# Set seed for fixed random seed
+set.seed(20)
+
+# run k-means
+Clusters <- kmeans(fedPapers_KM, 12)
+fedPapers_KM$Clusters <- as.factor(Clusters$cluster)
+
+str(Clusters)
+Clusters$centers
+
+# Plot results
+clusplot(fedPapers_KM, fedPapers_KM$Clusters, color = T, shade = T, labels = 0, lines = 0)
+```
+
+The clusplot shows a visual representation of the K-Means model. It is difficult to see how the documents are clustered from this visualization, but it does show that the model was successful in assigning the 85 observations to clusters. 
+
+```{r}
+# Create a separate data frame that includes the author names
+fedPapers_KM2 <- fedPapersRAW
+fedPapers_KM2$Clusters <- as.factor(Clusters$cluster)
+
+ggplot(data = fedPapers_KM2, aes(x=author, fill=Clusters))+
+  geom_bar(stat = "count")+
+  labs(title = "K = ?")+
+  theme(plot.title = element_text(hjust=0.5), text=element_text(size = 15))
+```
+The stacked bar chart can give us a better visual of the contents of each cluster. The disputed papers seem to be assigned three papers to cluster 3, one paper to cluster 5, three papers to cluster 6, and four papers to cluster 11. 
+
+Based on the contents of clusters 3, 5, 6 & 11 we can draw conclusions about those papers. Cluster 3 and 11 seem to be distinctly Madison. Cluster 5 and 6 seem to be distinctly Hamilton. Based on these results it is likely that Hamilton wrote approximately seven of the disputed papers, and Hamilton wrote approximately four or the disputed papers. 
+
+## Hierarchical Clustering Algorithms (HAC)
+
+The Hierarchical Clustering Algorithms or HAC create nested clusters. This method will produce a series of diagrams that assigns each paper to a cluster and identifies its nearest neighbors. This data will be used to make conclusions about the authorship of each disputed paper. 
+
+```{r}
+# Create a subset that excludes the authors names
+fedPapers_HAC <- fedPapersRAW[, c(2:72)]
+
+# Make the names of each file an index for the rownames
+rownames(fedPapers_HAC) <- fedPapers_HAC[,1]
+fedPapers_HAC[,1] <- NULL
+
+# Calculate the distance using various methods
+distance1 <- dist(fedPapers_HAC, method = "euclidean")
+distance2 <- dist(fedPapers_HAC, method = "maximum")
+distance3 <- dist(fedPapers_HAC, method = "manhattan")
+distance4 <- dist(fedPapers_HAC, method = "canberra")
+distance5 <- dist(fedPapers_HAC, method = "binary")
+distance6 <- dist(fedPapers_HAC, method = "minkowski", p=0.5)
+distance7 <- dist(fedPapers_HAC, method = "minkowski", p=4)
+
+# Display the results of HAC
+# Euclidean distance
+HAC1 <- hclust(distance1, method = "complete")
+plot(HAC1, cex=0.6, hang=-1)
+rect.hclust(HAC1, k=12, border = 2:5)
+
+# Maximum Distance
+HAC2 <- hclust(distance2, method = "complete")
+plot(HAC2, cex=0.6, hang=-1)
+rect.hclust(HAC2, k=12, border = 2:5)
+
+# Manhattan distance
+HAC3 <- hclust(distance3, method = "complete")
+plot(HAC3, cex=0.6, hang=-1)
+rect.hclust(HAC3, k=12, border = 2:5)
+
+# Canberra distance
+HAC4 <- hclust(distance4, method = "complete")
+plot(HAC4, cex=0.6, hang=-1)
+rect.hclust(HAC4, k=12, border = 2:5)
+
+# Binary distance
+HAC5 <- hclust(distance5, method = "complete")
+plot(HAC5, cex=0.6, hang=-1)
+rect.hclust(HAC5, k=12, border = 2:5)
+
+# Minkowksi distance p=0.5
+HAC6 <- hclust(distance6, method = "complete")
+plot(HAC6, cex=0.6, hang=-1)
+rect.hclust(HAC6, k=12, border = 2:5)
+
+# Minkowksi distance p=4
+HAC7 <- hclust(distance7, method = "complete")
+plot(HAC7, cex=0.6, hang=-1)
+rect.hclust(HAC7, k=12, border = 2:5)
+```
+
+
+## Conclusions
+
+The K-Means model seemed to have more definitive results, because each observation is placed in a distinct cluster. The Hierarchical Clustering Algorithms (HAC) were much more textured. The different distance measuring methods didn't always agree. Both clustering methods indicated that the majority of the disputed papers were written by James Madison, though they did not have the same number of Madison vs. Hamilton identifications. Most of the models correctly cluster John Jay's papers together, and John Jay was not considered to be a possible author of any of the disputed papers. 
+
+The highly detailed dendrograms which resulted from the HAC models (summarized in the tables below) contain features that illustrate the similarity between the disputed papers and the papers whose authors are known. Some of the disputed papers were assigned to mixed clusters of Madison and Hamilton papers. In those cases the disputed paper's authorship was identified based on a close branch to a known author. 
+
+Papers 51 and 54 were unanimously chosen as Madison essays by all of the models. Papers 53, 56, 62, and 63 were identified as Madison papers six out of seven times. Papers 49, 50 and 57 were identified slightly more times as Madison over Hamilton. Paper 52 had as many Madison identifications as Hamilton. It is important to note that some of the models identified a disputed paper as authored by John Jay or as a collaboration between Madison and Hamilton. As stated before John Jay was not considered a candidate for authorship, and Hamilton-Madison did not occur enough times in any observation to be considered as a serious possibility. Only one paper was identifed as Hamilton by the majority of models, paper 55. 
